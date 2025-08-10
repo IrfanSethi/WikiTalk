@@ -74,6 +74,11 @@ class AppGUI:
         self.font_heading = pick(["Linux Libertine", "Georgia", "Times New Roman", "Times", "Serif"], 16, "bold")
         self.font_body = pick(["Segoe UI", "Arial", "Helvetica", "Nimbus Sans", "Liberation Sans", "Sans"], 12)
         self.font_mono = pick(["Consolas", "Courier New", "Courier", "Monospace"], 11)
+        try:
+            self.font_body_bold = tkfont.Font(font=self.font_body)
+            self.font_body_bold.configure(weight="bold")
+        except Exception:
+            self.font_body_bold = self.font_body
         # Link font based on body with underline
         self.font_link = tkfont.Font(font=self.font_body)
         try:
@@ -239,6 +244,7 @@ class AppGUI:
         self.chat.configure(font=self.font_body, insertbackground=WIKI_FG_TEXT, spacing1=1, spacing3=4)
         self.chat.tag_configure("user", foreground=WIKI_LINK, font=(self.font_body.actual("family"), self.font_body.actual("size"), "bold"))
         self.chat.tag_configure("assistant", foreground=WIKI_FG_TEXT, font=self.font_body)
+        self.chat.tag_configure("ext_text", foreground="#001f3f", font=self.font_body)
         self.chat.tag_configure("meta", foreground=WIKI_FG_MUTED, font=self.font_body)
         # message block styling
         try:
@@ -247,8 +253,11 @@ class AppGUI:
             self.chat.tag_configure("bubble_assistant", background="#fafafa")
         except Exception:
             pass
+        # Links: Wikipedia-blue; external links navy
         self.chat.tag_configure("link", foreground=WIKI_LINK, underline=True, font=self.font_body)
         self.chat.tag_configure("link_visited", foreground=WIKI_LINK_VISITED, underline=True, font=self.font_body)
+        self.chat.tag_configure("ext_link", foreground="#001f3f", underline=True, font=self.font_body)  # navy
+        self.chat.tag_configure("ext_link_visited", foreground="#001f3f", underline=True, font=self.font_body)
         self.chat.tag_bind("link", "<Enter>", lambda e: self.chat.config(cursor="hand2"))
         self.chat.tag_bind("link", "<Leave>", lambda e: self.chat.config(cursor=""))
         self.chat.tag_bind("link_visited", "<Enter>", lambda e: self.chat.config(cursor="hand2"))
@@ -448,7 +457,14 @@ class AppGUI:
             return
         self._clear_chat()
         for mid, session_id, role, text, created_at, citations in self.db.list_messages(self.current_session_id):
-            self._append_chat(role, text)
+            is_external = False
+            try:
+                if citations:
+                    c = json.loads(citations)
+                    is_external = bool(c.get("external"))
+            except Exception:
+                pass
+            self._append_chat(role, text, is_external)
 
     # Clear the chat text widget.
     def _clear_chat(self):
@@ -457,17 +473,19 @@ class AppGUI:
         self.chat.configure(state=tk.DISABLED)
 
     # Append a message to the chat view with simple role styling.
-    def _append_chat(self, role: str, text: str):
+    def _append_chat(self, role: str, text: str, external: bool = False):
         self.chat.configure(state=tk.NORMAL)
         # Minimal separation between messages
         if self.chat.index("end-1c") != "1.0":
             self.chat.insert(tk.END, "\n")
         if role == "user":
             self.chat.insert(tk.END, "You:\n", ("user",))
-            self.chat.insert(tk.END, text + "\n", ("assistant", "bubble_user"))
+            self._insert_markdown(text, ("ext_text",) if external else None)
+            self.chat.insert(tk.END, "\n", ("assistant", "bubble_user") + (("ext_text",) if external else ()))
         else:
             self.chat.insert(tk.END, "WikiTalk:\n", ("user",))
-            self.chat.insert(tk.END, text + "\n", ("assistant", "bubble_assistant"))
+            self._insert_markdown(text, ("ext_text",) if external else None)
+            self.chat.insert(tk.END, "\n", ("assistant", "bubble_assistant") + (("ext_text",) if external else ()))
         self.chat.configure(state=tk.DISABLED)
         self.chat.see(tk.END)
 
@@ -495,7 +513,16 @@ class AppGUI:
         self.chat.insert(tk.END, label)
         end = self.chat.index(tk.END)
         # Use a unique tag per link to avoid handler collisions
-        base_tag = "link_visited" if url in self._visited_links else "link"
+        is_wiki = False
+        try:
+            is_wiki = ("wikipedia.org" in url)
+        except Exception:
+            pass
+        if is_wiki:
+            base = "link_visited" if url in self._visited_links else "link"
+        else:
+            base = "ext_link_visited" if url in self._visited_links else "ext_link"
+        base_tag = base
         unique_tag = f"{base_tag}_{start}"
         self.chat.tag_add(unique_tag, start, end)
         # Ensure style of unique tag matches base
@@ -505,16 +532,89 @@ class AppGUI:
             except Exception:
                 pass
 
-        def open_link(event, u=url, s=start, e=end, ut=unique_tag):
+        def open_link(event, u=url, s=start, e=end, ut=unique_tag, bt=base_tag):
             try:
                 webbrowser.open(u)
                 self._visited_links.add(u)
                 # swap visual style to visited
-                self.chat.tag_configure(ut, foreground=WIKI_LINK_VISITED, underline=True)
+                if bt.startswith("ext_link"):
+                    # keep navy for external links
+                    self.chat.tag_configure(ut, foreground="#001f3f", underline=True)
+                else:
+                    self.chat.tag_configure(ut, foreground=WIKI_LINK_VISITED, underline=True)
             except Exception:
                 pass
 
         self.chat.tag_bind(unique_tag, "<Button-1>", open_link)
+        self.chat.tag_bind(unique_tag, "<Enter>", lambda e: self.chat.config(cursor="hand2"))
+        self.chat.tag_bind(unique_tag, "<Leave>", lambda e: self.chat.config(cursor=""))
+
+    def _insert_markdown(self, text: str, text_tag: tuple[str, ...] | None = None) -> None:
+        """Render minimal Markdown: headings, code blocks, bullets, links, and bold **text**."""
+        import re
+
+        lines = text.splitlines()
+        in_code = False
+        code_delim = re.compile(r"^\s*```")
+        link_re = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+        bold_re = re.compile(r"\*\*([^*]+)\*\*")
+
+        def insert_inline(s: str):
+            idx = 0
+            for m in bold_re.finditer(s):
+                before = s[idx:m.start()]
+                if before:
+                    self.chat.insert(tk.END, before, text_tag or ())
+                bold_txt = m.group(1)
+                self.chat.insert(tk.END, bold_txt, ("md_bold",) + (text_tag or ()))
+                idx = m.end()
+            rest = s[idx:]
+            if rest:
+                self.chat.insert(tk.END, rest, text_tag or ())
+        for line in lines:
+            if code_delim.match(line):
+                in_code = not in_code
+                continue
+            if in_code:
+                self.chat.insert(tk.END, line + "\n", ("meta",))
+                continue
+            # headings
+            if line.startswith("### "):
+                insert_inline(line[4:])
+                self.chat.insert(tk.END, "\n")
+                continue
+            if line.startswith("## "):
+                insert_inline(line[3:])
+                self.chat.insert(tk.END, "\n")
+                continue
+            if line.startswith("# "):
+                insert_inline(line[2:])
+                self.chat.insert(tk.END, "\n")
+                continue
+            # bullets
+            if line.startswith("- "):
+                self.chat.insert(tk.END, " • ", text_tag or ())
+                content = line[2:]
+            else:
+                content = line
+            # links
+            pos = 0
+            for m in link_re.finditer(content):
+                before = content[pos:m.start()]
+                if before:
+                    insert_inline(before)
+                label, url = m.group(1), m.group(2)
+                self._insert_link(url, label)
+                pos = m.end()
+            rest = content[pos:]
+            if rest:
+                insert_inline(rest)
+            self.chat.insert(tk.END, "\n")
+
+        try:
+            self.chat.tag_configure("md_bold", font=(self.font_body.actual("family"), self.font_body.actual("size"), "bold"))
+        except Exception:
+            pass
 
     def _on_entry_return(self, event):
         self._send_clicked()
@@ -646,7 +746,13 @@ class AppGUI:
                 if kind == "answer":
                     answer, citations = payload
                     self.db.add_message(self.current_session_id, "assistant", answer, citations)
-                    self._append_chat("assistant", answer)
+                    is_external = False
+                    try:
+                        if citations:
+                            is_external = bool(citations.get("external"))
+                    except Exception:
+                        pass
+                    self._append_chat("assistant", answer, is_external)
                     self._set_status("Ready")
                     self._refresh_session_label_article()
                 elif kind == "article":

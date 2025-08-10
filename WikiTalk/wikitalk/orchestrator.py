@@ -5,6 +5,9 @@ from wikitalk.db import Database
 from wikitalk.llm import LLMClient
 from wikitalk.retrieval import Chunk, retrieve_top_k, split_into_chunks
 from wikitalk.wiki import WikipediaClient
+import urllib.parse
+import urllib.request
+import json
 
 
 class ChatOrchestrator:
@@ -72,7 +75,10 @@ class ChatOrchestrator:
         if self.llm.available():
             messages = self.llm.build_messages(question, history_pairs, top_chunks, title, url)
             answer = self.llm.chat(messages)
-        else:
+            # If model produced an empty answer, fall back
+            if not answer.strip():
+                top_chunks = []
+        if not self.llm.available():
             snippet_lines = []
             for ch in top_chunks[:5]:
                 sentences = re.split(r"(?<=[.!?])\s+", ch.text.strip())
@@ -89,5 +95,40 @@ class ChatOrchestrator:
                     "LLM is unavailable and I couldn't find relevant content in the provided article. "
                     "Try rephrasing the question or loading a different section/article."
                 )
-
+        # If no relevant chunks or empty answer, perform a brief web search (DuckDuckGo Instant Answer)
+        used_external = False
+        if (not top_chunks) and (not answer or not answer.strip()):
+            try:
+                q = urllib.parse.quote(question)
+                url_ddg = f"https://api.duckduckgo.com/?q={q}&format=json&no_redirect=1&no_html=1"
+                with urllib.request.urlopen(url_ddg, timeout=8) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                related = data.get("RelatedTopics", [])
+                results = []
+                for item in related:
+                    if isinstance(item, dict) and item.get("FirstURL") and item.get("Text"):
+                        results.append((item["Text"], item["FirstURL"]))
+                    elif isinstance(item, dict) and item.get("Topics"):
+                        for sub in item.get("Topics") or []:
+                            if sub.get("FirstURL") and sub.get("Text"):
+                                results.append((sub["Text"], sub["FirstURL"]))
+                    if len(results) >= 5:
+                        break
+                if results:
+                    md_lines = [
+                        "I couldn't find this directly in the article. Here are a few external resources:",
+                        "",
+                    ]
+                    for text_label, link_url in results[:5]:
+                        # Markdown link; GUI will color non-wiki links navy
+                        md_lines.append(f"- [{text_label}]({link_url})")
+                    answer = "\n".join(md_lines)
+                    used_external = True
+            except Exception:
+                pass
+        if used_external:
+            try:
+                citations["external"] = True
+            except Exception:
+                pass
         return answer, citations

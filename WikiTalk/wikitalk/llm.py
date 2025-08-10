@@ -119,7 +119,8 @@ class LLMClient:
             "Organize responses with a brief summary first, then key points or steps as bullet points, and a short details section when helpful. "
             "Define important terms and include dates, names, and figures when relevant. "
             "Cite sections using [Section: <name>] and include very short quotes where helpful. "
-            "If the answer is not in the context, say so plainly and point to likely relevant sections."
+            "If the answer is not in the context, say so plainly and point to likely relevant sections. "
+            "Format your response in Markdown (headings, bullet lists, and links) where helpful."
         )
         ctx_parts: List[str] = []
         for i, ch in enumerate(chunks, 1):
