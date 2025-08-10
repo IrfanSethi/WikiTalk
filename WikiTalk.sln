@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36327.8 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "WikiTalk", "WikiTalk\WikiTalk.pyproj", "{A9D52E51-334D-42C9-90B4-CEBCDFFE7B21}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A9D52E51-334D-42C9-90B4-CEBCDFFE7B21}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A9D52E51-334D-42C9-90B4-CEBCDFFE7B21}.Release|Any CPU.ActiveCfg = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {A818CDBC-5E76-4855-BFB3-BF8C2F7E0B9D}
+	EndGlobalSection
+EndGlobal
