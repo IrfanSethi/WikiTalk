@@ -40,7 +40,8 @@ class ChatOrchestrator:
         session = self.db.get_session(session_id)
         if not session:
             raise ValueError("Invalid session.")
-        _, _, _, language, article_title = session
+        # tuple: id, name, created_at, language, article_title, article_url
+        _, _, _, language, article_title, _article_url = session
         if not article_title:
             raise ValueError("Select an article first.")
 

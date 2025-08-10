@@ -350,7 +350,8 @@ class AppGUI:
             except Exception:
                 pass
         for s in sessions:
-            sid, name, created_at, language, article_title = s
+            # tuple: id, name, created_at, language, article_title, article_url
+            sid, name, created_at, language, article_title, *_ = s
             label = name
             if article_title:
                 label += f"  ·  {article_title}"
@@ -428,7 +429,16 @@ class AppGUI:
         s = self._sessions_cache[idx]
         self.current_session_id = s[0]
         article_title = s[4]
+        article_url = s[5] if len(s) > 5 else None
         self.lbl_article.configure(text=(article_title or "No article loaded"))
+        # Restore URL field and click-through link
+        try:
+            self.entry_article.delete(0, tk.END)
+            if article_url:
+                self.entry_article.insert(0, article_url)
+            self._current_article_url = article_url
+        except Exception:
+            pass
         self._reload_chat()
 
     # Reload chat history into the chat view.
@@ -626,7 +636,7 @@ class AppGUI:
                     data.get("url"),
                     data.get("extract", ""),
                 )
-                self.db.set_session_article(self.current_session_id, real_title)
+                self.db.set_session_article(self.current_session_id, real_title, data.get("url"))
                 self.db.set_session_language(self.current_session_id, lang)
                 # store URL for click-through
                 self._current_article_url = data.get("url")
@@ -655,6 +665,13 @@ class AppGUI:
                     title = payload
                     self.lbl_article.configure(text=title)
                     self._set_status(f"Loaded: {title}")
+                    # Reflect current URL into the URL entry for persistence/visibility
+                    try:
+                        self.entry_article.delete(0, tk.END)
+                        if self._current_article_url:
+                            self.entry_article.insert(0, self._current_article_url)
+                    except Exception:
+                        pass
                     self._refresh_session_label_article()
                 elif kind == "llm_ok":
                     self._set_status(payload or "Gemini ready")

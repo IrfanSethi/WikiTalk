@@ -1,0 +1,12 @@
+# Ignore Python bytecode and caches
+__pycache__/
+*.py[cod]
+
+# Ignore local virtual environments
+env/
+.venv/
+venv/
+
+# OS/filesystem noise
+.DS_Store
+Thumbs.db

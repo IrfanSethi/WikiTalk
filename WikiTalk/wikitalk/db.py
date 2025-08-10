@@ -29,10 +29,19 @@ class Database:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     language TEXT NOT NULL DEFAULT 'en',
-                    article_title TEXT
+                    article_title TEXT,
+                    article_url TEXT
                 );
                 """
             )
+            # Migrate existing DBs that may not have the article_url column
+            try:
+                cur.execute("PRAGMA table_info(sessions);")
+                cols = [r[1] for r in cur.fetchall()]
+                if "article_url" not in cols:
+                    cur.execute("ALTER TABLE sessions ADD COLUMN article_url TEXT;")
+            except Exception:
+                pass
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS messages (
@@ -78,10 +87,10 @@ class Database:
             return cur.lastrowid
 
     # List sessions (most recent first) with basic metadata for the sidebar.
-    def list_sessions(self) -> List[Tuple[int, str, str, str, Optional[str]]]:
+    def list_sessions(self) -> List[Tuple[int, str, str, str, Optional[str], Optional[str]]]:
         with self._lock:
             cur = self._conn.cursor()
-            cur.execute("SELECT id, name, created_at, language, article_title FROM sessions ORDER BY id DESC")
+            cur.execute("SELECT id, name, created_at, language, article_title, article_url FROM sessions ORDER BY id DESC")
             return cur.fetchall()
 
     # Rename a session and update its updated_at timestamp.
@@ -92,10 +101,13 @@ class Database:
             self._conn.commit()
 
     # Set or clear the selected article title for a session.
-    def set_session_article(self, session_id: int, title: Optional[str]):
+    def set_session_article(self, session_id: int, title: Optional[str], url: Optional[str] = None):
         with self._lock:
             ts = now_iso()
-            self._conn.execute("UPDATE sessions SET article_title=?, updated_at=? WHERE id=?", (title, ts, session_id))
+            self._conn.execute(
+                "UPDATE sessions SET article_title=?, article_url=?, updated_at=? WHERE id=?",
+                (title, url, ts, session_id),
+            )
             self._conn.commit()
 
     # Update the language code for a session.
@@ -106,10 +118,10 @@ class Database:
             self._conn.commit()
 
     # Retrieve a single session row or None if not found.
-    def get_session(self, session_id: int) -> Optional[Tuple[int, str, str, str, Optional[str]]]:
+    def get_session(self, session_id: int) -> Optional[Tuple[int, str, str, str, Optional[str], Optional[str]]]:
         with self._lock:
             cur = self._conn.cursor()
-            cur.execute("SELECT id, name, created_at, language, article_title FROM sessions WHERE id=?", (session_id,))
+            cur.execute("SELECT id, name, created_at, language, article_title, article_url FROM sessions WHERE id=?", (session_id,))
             return cur.fetchone()
 
     # Delete a session; associated messages are deleted via ON DELETE CASCADE.
