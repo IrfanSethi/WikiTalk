@@ -15,7 +15,7 @@ Instead of passively reading long articles, you can engage in conversations aski
 - No account required; works locally
 
 ## Screenshots
-> ![WikiTalk]()
+> ![WikiTalk](https://github.com/IrfanSethi/WikiTalk/blob/main/WikiTalk/Screenshot%202025-08-10%20114039.png)
 
 ## Installation
 
