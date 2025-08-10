@@ -235,13 +235,14 @@ class AppGUI:
         # Chat text inside content card
         self.chat = tk.Text(content, wrap=tk.WORD, state=tk.DISABLED, bg=WIKI_BG_CONTENT, fg=WIKI_FG_TEXT, relief="flat")
         self.chat.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
-        self.chat.configure(font=self.font_body, insertbackground=WIKI_FG_TEXT, spacing1=4, spacing3=8)
+        # Tighter spacing between paragraphs/messages
+        self.chat.configure(font=self.font_body, insertbackground=WIKI_FG_TEXT, spacing1=1, spacing3=4)
         self.chat.tag_configure("user", foreground=WIKI_LINK, font=(self.font_body.actual("family"), self.font_body.actual("size"), "bold"))
         self.chat.tag_configure("assistant", foreground=WIKI_FG_TEXT, font=self.font_body)
         self.chat.tag_configure("meta", foreground=WIKI_FG_MUTED, font=self.font_body)
         # message block styling
         try:
-            self.chat.tag_configure("sep", lmargin1=0, lmargin2=0, rmargin=0, spacing1=4, spacing3=8)
+            self.chat.tag_configure("sep", lmargin1=0, lmargin2=0, rmargin=0, spacing1=2, spacing3=4)
             self.chat.tag_configure("bubble_user", background="#f0f6ff")
             self.chat.tag_configure("bubble_assistant", background="#fafafa")
         except Exception:
@@ -448,15 +449,6 @@ class AppGUI:
         self._clear_chat()
         for mid, session_id, role, text, created_at, citations in self.db.list_messages(self.current_session_id):
             self._append_chat(role, text)
-            if citations:
-                try:
-                    c = json.loads(citations)
-                    src = c.get("article", {})
-                    secs = c.get("sections", [])
-                    line = f"Sources: {src.get('title','')}  {src.get('url','')}  Sections: {', '.join(secs)}"
-                    self._append_meta(line)
-                except Exception:
-                    pass
 
     # Clear the chat text widget.
     def _clear_chat(self):
@@ -467,15 +459,15 @@ class AppGUI:
     # Append a message to the chat view with simple role styling.
     def _append_chat(self, role: str, text: str):
         self.chat.configure(state=tk.NORMAL)
-        # visual separator between messages
+        # Minimal separation between messages
         if self.chat.index("end-1c") != "1.0":
-            self._insert_separator()
+            self.chat.insert(tk.END, "\n")
         if role == "user":
             self.chat.insert(tk.END, "You:\n", ("user",))
-            self.chat.insert(tk.END, text + "\n\n", ("assistant", "bubble_user"))
+            self.chat.insert(tk.END, text + "\n", ("assistant", "bubble_user"))
         else:
             self.chat.insert(tk.END, "WikiTalk:\n", ("user",))
-            self.chat.insert(tk.END, text + "\n\n", ("assistant", "bubble_assistant"))
+            self.chat.insert(tk.END, text + "\n", ("assistant", "bubble_assistant"))
         self.chat.configure(state=tk.DISABLED)
         self.chat.see(tk.END)
 
@@ -655,10 +647,6 @@ class AppGUI:
                     answer, citations = payload
                     self.db.add_message(self.current_session_id, "assistant", answer, citations)
                     self._append_chat("assistant", answer)
-                    src = citations.get("article", {})
-                    secs = citations.get("sections", [])
-                    line = f"Sources: {src.get('title','')}  {src.get('url','')}  Sections: {', '.join(secs)}"
-                    self._append_meta(line)
                     self._set_status("Ready")
                     self._refresh_session_label_article()
                 elif kind == "article":
